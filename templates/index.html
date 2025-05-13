@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FraudGuard - Credit Card Fraud Detection</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        /* Custom styles for loading spinner */
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+            margin-left: 8px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <!-- Header -->
+    <header class="bg-blue-600 text-white p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold">FraudGuard</h1>
+            <nav>
+                <a href="/" class="px-2 hover:underline">Home</a>
+                <a href="#help" id="helpLink" class="px-2 hover:underline">Help</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto p-6">
+        <div class="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">
+            <h2 class="text-2xl font-semibold mb-4 text-center">Detect Credit Card Fraud</h2>
+            <p class="text-gray-600 mb-6 text-center">Select a sample transaction or enter an amount to predict fraud using AI.</p>
+
+            <!-- Prediction Form -->
+            <form id="predictForm" class="space-y-4">
+                <!-- Sample Transaction Dropdown -->
+                <div>
+                    <label for="sample_id" class="block text-sm font-medium text-gray-700">Select Sample Transaction</label>
+                    <select id="sample_id" name="sample_id" class="mt-1 block w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">-- Choose a sample (recommended) --</option>
+                        {% for sample in samples %}
+                            <option value="{{ sample.id }}">Transaction {{ sample.id }}: ${{ sample.Amount }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Manual Input -->
+                <div>
+                    <p class="text-sm font-medium text-gray-700 mb-2">Or enter transaction details:</p>
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                            <label for="Amount" class="block text-sm font-medium text-gray-700">Amount ($)</label>
+                            <input type="number" step="any" id="Amount" name="Amount" class="mt-1 block w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., 149.62" required>
+                        </div>
+                        <div>
+                            <label for="Time" class="block text-sm font-medium text-gray-700">Time (seconds, optional)</label>
+                            <input type="number" id="Time" name="Time" class="mt-1 block w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., 0">
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" id="predictBtn" class="w-full bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 disabled:bg-blue-400">Predict Fraud</button>
+            </form>
+
+            <!-- Results Section -->
+            <div id="result" class="mt-6 hidden">
+                <h3 class="text-lg font-semibold">Prediction Result</h3>
+                <p id="prediction" class="text-xl font-bold"></p>
+                <p id="probability" class="text-gray-600"></p>
+            </div>
+            <div id="error" class="mt-6 hidden text-red-600 font-medium"></div>
+        </div>
+    </main>
+
+    <!-- Help Modal -->
+    <div id="helpModal" class="fixed inset-0 bg-gray-800 bg-opacity-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg p-6 max-w-lg">
+            <h3 class="text-xl font-semibold mb-4">How to Use FraudGuard</h3>
+            <p class="text-gray-600 mb-4">
+                FraudGuard uses advanced AI to detect credit card fraud. Select a sample transaction or enter an amount to test. In a real bank system, secure transaction patterns are analyzed automatically. For example:
+            </p>
+            <ul class="list-disc pl-5 mb-4">
+                <li><strong>Sample Transaction</strong>: Choose a pre-filled transaction to see how the system works.</li>
+                <li><strong>Amount</strong>: Enter the transaction amount (e.g., $149.62).</li>
+                <li><strong>Time</strong>: Optional; seconds since a reference point (leave blank if unsure).</li>
+            </ul>
+            <button id="closeModal" class="bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700">Close</button>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        $(document).ready(function() {
+            // Show/hide help modal
+            $('#helpLink').click(function(e) {
+                e.preventDefault();
+                $('#helpModal').removeClass('hidden');
+            });
+            $('#closeModal').click(function() {
+                $('#helpModal').addClass('hidden');
+            });
+
+            // Handle form submission
+            $('#predictForm').submit(function(e) {
+                e.preventDefault();
+                $('#result, #error').addClass('hidden');
+                $('#predictBtn').addClass('loading').prop('disabled', true);
+
+                $.ajax({
+                    url: '/predict',
+                    type: 'POST',
+                    data: $(this).serialize(),
+                    success: function(response) {
+                        $('#result').removeClass('hidden');
+                        $('#prediction').text(response.prediction).addClass(response.prediction === 'Fraud' ? 'text-red-900' : 'text-green-400');
+                        $('#probability').text('Confidence: ' + response.fraud_probability);
+                    },
+                    error: function(xhr) {
+                        $('#error').removeClass('hidden').text(xhr.responseJSON.error);
+                    },
+                    complete: function() {
+                        $('#predictBtn').removeClass('loading').prop('disabled', false);
+                    }
+                });
+            });
+
+            // Enable/disable manual input based on sample selection
+            $('#sample_id').change(function() {
+                const isSampleSelected = $(this).val() !== '';
+                $('#Amount, #Time').prop('disabled', isSampleSelected);
+                if (isSampleSelected) {
+                    $('#Amount, #Time').val('');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
